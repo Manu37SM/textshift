@@ -1,0 +1,14 @@
+{
+  "name": "textshift",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TextShift — AI\u2194Human rewriting, AI-text detection, and transformation comparison. Free-tier architecture (Cloudflare Pages + Groq/Workers AI/Ollama).",
+  "scripts": {
+    "dev": "wrangler pages dev public --ai AI",
+    "deploy": "wrangler pages deploy public --project-name=textshift"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

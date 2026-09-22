@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TextShift — rewrite, detect, compare</title>
+<meta name="description" content="Rewrite AI text into natural human writing, structure human writing, estimate AI-likeness, and compare the change — all in your browser." />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">Tt</span>
+    <span class="brand-name">TextShift</span>
+  </div>
+  <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+    <svg id="theme-icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 4.5V2M12 22v-2.5M4.5 12H2M22 12h-2.5M5.6 5.6 4 4M20 20l-1.6-1.6M18.4 5.6 20 4M4 20l1.6-1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.6"/></svg>
+    <svg id="theme-icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="display:none"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  </button>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="TextShift tools">
+  <button class="tab active" role="tab" aria-selected="true" data-tab="ai-human">AI → Human</button>
+  <button class="tab" role="tab" aria-selected="false" data-tab="human-ai">Human → AI</button>
+  <button class="tab" role="tab" aria-selected="false" data-tab="detector">Detector</button>
+  <button class="tab" role="tab" aria-selected="false" data-tab="compare">Compare</button>
+  <span class="tab-indicator" aria-hidden="true"></span>
+</nav>
+
+<main>
+
+  <!-- ============ AI -> HUMAN ============ -->
+  <section class="panel active" id="panel-ai-human" role="tabpanel">
+    <div class="options-bar">
+      <label>Style
+        <select data-role="style">
+          <option value="natural">Natural</option>
+          <option value="casual">Casual</option>
+          <option value="professional">Professional</option>
+          <option value="academic">Academic</option>
+          <option value="technical">Technical</option>
+          <option value="friendly">Friendly</option>
+        </select>
+      </label>
+      <label>Humanization
+        <select data-role="level">
+          <option value="light">Light</option>
+          <option value="medium" selected>Medium</option>
+          <option value="strong">Strong</option>
+        </select>
+      </label>
+      <label class="checkbox"><input type="checkbox" data-role="preserveLength" /> Preserve length</label>
+      <label class="checkbox"><input type="checkbox" data-role="preserveTerminology" checked /> Preserve terminology</label>
+    </div>
+
+    <div class="editor-grid">
+      <div class="editor-col">
+        <div class="editor-head">
+          <span>Input · AI-generated text</span>
+          <span class="counts" data-count-for="input">0 words · 0 chars</span>
+        </div>
+        <textarea class="editor" data-role="input" placeholder="Paste AI-generated or AI-assisted text here…" maxlength="6000"></textarea>
+        <div class="editor-actions">
+          <button class="btn primary" data-action="transform">Humanize</button>
+          <button class="btn ghost" data-action="clear">Clear</button>
+        </div>
+      </div>
+      <div class="editor-col">
+        <div class="editor-head">
+          <span>Output · Humanized</span>
+          <span class="counts" data-count-for="output">0 words · 0 chars</span>
+        </div>
+        <textarea class="editor" data-role="output" placeholder="Your humanized text will appear here…" readonly></textarea>
+        <div class="editor-actions">
+          <button class="btn ghost" data-action="copy">Copy</button>
+          <button class="btn ghost" data-action="download">Download</button>
+        </div>
+      </div>
+    </div>
+    <div class="status-row" data-role="status"></div>
+  </section>
+
+  <!-- ============ HUMAN -> AI ============ -->
+  <section class="panel" id="panel-human-ai" role="tabpanel">
+    <div class="options-bar">
+      <label>Style
+        <select data-role="style">
+          <option value="general">General</option>
+          <option value="professional">Professional</option>
+          <option value="academic">Academic</option>
+          <option value="technical">Technical</option>
+          <option value="business">Business</option>
+          <option value="structured">Structured</option>
+        </select>
+      </label>
+      <label>Structure
+        <select data-role="level">
+          <option value="light">Light</option>
+          <option value="medium" selected>Medium</option>
+          <option value="strong">Strong</option>
+        </select>
+      </label>
+      <label class="checkbox"><input type="checkbox" data-role="preserveLength" /> Preserve length</label>
+    </div>
+
+    <div class="editor-grid">
+      <div class="editor-col">
+        <div class="editor-head">
+          <span>Input · Human-written text</span>
+          <span class="counts" data-count-for="input">0 words · 0 chars</span>
+        </div>
+        <textarea class="editor" data-role="input" placeholder="Paste naturally written human text here…" maxlength="6000"></textarea>
+        <div class="editor-actions">
+          <button class="btn primary" data-action="transform">Structure</button>
+          <button class="btn ghost" data-action="clear">Clear</button>
+        </div>
+      </div>
+      <div class="editor-col">
+        <div class="editor-head">
+          <span>Output · AI-style</span>
+          <span class="counts" data-count-for="output">0 words · 0 chars</span>
+        </div>
+        <textarea class="editor" data-role="output" placeholder="Your structured text will appear here…" readonly></textarea>
+        <div class="editor-actions">
+          <button class="btn ghost" data-action="copy">Copy</button>
+          <button class="btn ghost" data-action="download">Download</button>
+        </div>
+      </div>
+    </div>
+    <div class="status-row" data-role="status"></div>
+  </section>
+
+  <!-- ============ DETECTOR ============ -->
+  <section class="panel" id="panel-detector" role="tabpanel">
+    <div class="editor-grid single">
+      <div class="editor-col">
+        <div class="editor-head">
+          <span>Text to analyze</span>
+          <span class="counts" data-count-for="input">0 words · 0 chars</span>
+        </div>
+        <textarea class="editor" data-role="input" placeholder="Paste any text to estimate its linguistic characteristics…" maxlength="6000"></textarea>
+        <div class="editor-actions">
+          <button class="btn primary" data-action="detect">Analyze</button>
+          <button class="btn ghost" data-action="clear">Clear</button>
+        </div>
+      </div>
+      <div class="editor-col">
+        <div class="editor-head"><span>Result</span></div>
+        <div class="detector-result" data-role="detector-result">
+          <p class="empty-hint">Run an analysis to see an estimate here.</p>
+        </div>
+      </div>
+    </div>
+    <div class="status-row" data-role="status"></div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="panel" id="panel-compare" role="tabpanel">
+    <div class="options-bar">
+      <button class="btn ghost" data-action="load-last">Use last transformation</button>
+    </div>
+    <div class="editor-grid">
+      <div class="editor-col">
+        <div class="editor-head">
+          <span>Original</span>
+          <span class="counts" data-count-for="original">0 words · 0 chars</span>
+        </div>
+        <textarea class="editor" data-role="original" placeholder="Paste the original text…" maxlength="6000"></textarea>
+      </div>
+      <div class="editor-col">
+        <div class="editor-head">
+          <span>Transformed</span>
+          <span class="counts" data-count-for="transformed">0 words · 0 chars</span>
+        </div>
+        <textarea class="editor" data-role="transformed" placeholder="Paste the transformed text…" maxlength="6000"></textarea>
+      </div>
+    </div>
+    <div class="editor-actions center">
+      <button class="btn primary" data-action="do-compare">Compare</button>
+      <button class="btn ghost" data-action="clear">Clear</button>
+    </div>
+    <div class="compare-result" data-role="compare-result"></div>
+    <div class="status-row" data-role="status"></div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <p>Text is sent to the configured AI provider only to perform the transformation you request. Nothing is stored or logged on this server.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

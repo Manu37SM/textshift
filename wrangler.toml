@@ -1,0 +1,23 @@
+# wrangler.toml — config for Cloudflare Pages Functions (local dev + deploy metadata)
+#
+# This project deploys as a Cloudflare Pages project (static `public/` + Functions in
+# `functions/`), so most of this file matters for *local* `wrangler pages dev` runs.
+# Bindings (KV, AI) for the deployed site are instead attached in the Cloudflare
+# dashboard under Pages → your project → Settings → Functions (see README.md).
+
+name = "textshift"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "public"
+
+# Workers AI binding — lets functions/_lib/providers/WorkersAIProvider.js call
+# env.AI.run(...). Free, no separate account needed beyond your Cloudflare account.
+[ai]
+binding = "AI"
+
+# KV namespace for the rate limiter (functions/_lib/rateLimit.js).
+# Create it once with:
+#   npx wrangler kv namespace create RATE_LIMIT_KV
+# then paste the returned `id` below (and again in the dashboard for production).
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "8a5c20aedefb4f2ab1c30ae3ba500911"
