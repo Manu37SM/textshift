@@ -1,6 +1,8 @@
+import { voiceBlock } from "../voice.js";
+
 // functions/_lib/prompts/humanToAi.js
 
-const LANGUAGE_RULE = `Language: the text may be in any language. Write the result in the same language and script as the input (for example Hindi stays in Devanagari, Hinglish stays Hinglish). Never translate it into English.`;
+const LANGUAGE_RULE = `Language: the text may be in any language. Write the result in the same language and script as the input (for example Hindi stays in Devanagari, Hinglish stays Hinglish). Never translate it into English. Tokens such as [[EMAIL_1]] or [[PHONE_2]] are privacy placeholders: copy them exactly as written, never translate, reformat or remove them.`;
 
 const BASE_SYSTEM_PROMPT = `You are a structured writing assistant.
 
@@ -35,6 +37,7 @@ export function buildHumanToAiPrompt({
   style = "general",
   structureLevel = "medium",
   preserveLength = false,
+  voice = "",
 } = {}) {
   const notes = [
     STYLE_NOTES[style] || STYLE_NOTES.general,
@@ -44,7 +47,7 @@ export function buildHumanToAiPrompt({
       : "Prioritize clarity and structure over matching the original length exactly.",
   ];
 
-  const system = `${BASE_SYSTEM_PROMPT}\n\n${LANGUAGE_RULE}\n\nStyle and options for this request:\n- ${notes.join("\n- ")}`;
+  const system = `${BASE_SYSTEM_PROMPT}\n\n${LANGUAGE_RULE}\n\nStyle and options for this request:\n- ${notes.join("\n- ")}${voiceBlock(voice)}`;
   const buildUser = (text) => `Transform the following text:\n\n"""\n${text}\n"""`;
 
   return { system, buildUser };

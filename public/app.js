@@ -78,7 +78,7 @@
       ],
     },
   ];
-  const OTHER_DESTS = [["auto", "Auto"], ["pipeline", "Pipeline"], ["tone", "Tone"], ["detector", "Detector"], ["compare", "Compare"], ["stats", "Stats"], ["cleaner", "Cleaner"]];
+  const OTHER_DESTS = [["auto", "Auto"], ["pipeline", "Pipeline"], ["tone", "Tone"], ["detector", "Detector"], ["compare", "Compare"], ["stats", "Stats"], ["fit", "Fit to target"], ["cleaner", "Cleaner"]];
 
   // ---------- helpers ----------
   function escapeHtml(str) {
@@ -136,13 +136,8 @@
     a.click();
     URL.revokeObjectURL(a.href);
   }
-  async function postJson(url, body) {
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    let data = null;
-    try { data = await res.json(); } catch { /* handled below */ }
-    if (!res.ok) throw new Error((data && data.error) || `Request failed (HTTP ${res.status}).`);
-    return data;
-  }
+  // All AI requests go through TSX.post: privacy shield, voice profile, Turnstile token, quota meter.
+  const postJson = (url, body) => window.TSX.post(url, body);
   function withLoading(panel, fn) {
     return async (...args) => {
       const buttons = $$("button", panel);
@@ -425,6 +420,7 @@
         : await postJson(tool.endpoint, payload);
       output.value = data.result;
       updateCounts(panel, "output", output);
+      window.TSX.after(panel, text, data.result, { guard: tool.id === "summarize" ? "none" : tool.id === "translate" || (plan && plan.translate) ? "light" : "full" });
       if (tool.pair) lastTransformation = { original: text, result: data.result };
       if (tool.autoDiff) diffOn = true;
       refreshDiff();
@@ -783,6 +779,7 @@
       state.fill("done", 0, last);
       output.value = rewrite.result;
       refresh();
+      window.TSX.after(panel, text, rewrite.result, { guard: plan.translate ? "light" : "full" });
       lastTransformation = { original: text, result: rewrite.result };
       pushHistory({ tool: "pipeline", label: "Pipeline", input: text, output: rewrite.result });
 
@@ -1032,6 +1029,7 @@
       outWrap.hidden = false;
       recheck.innerHTML = "";
       refreshCounts();
+      window.TSX.after(panel, text, result, { guard: id === "summarize" ? "none" : id === "translate" ? "light" : "full" });
       diffOn = !!a.diff;
       refreshDiff();
       pushHistory({ tool: "auto", label: `Auto · ${a.title}`, input: text, output: result });
@@ -1080,6 +1078,62 @@
     });
   })();
 
+  // ---------- fit to target ----------
+  (function wireFit() {
+    const panel = $("#panel-fit");
+    const input = $('[data-role="input"]', panel);
+    const output = $('[data-role="output"]', panel);
+    const info = $('[data-role="fit-result"]', panel);
+    const kindEl = $('[data-opt="target"]', panel);
+    const valueEl = $('[data-opt="value"]', panel);
+    const measure = (kind, text) => (kind === "chars" ? Array.from(text).length : kind === "words" ? T.words(text).length : T.stats(text).grade);
+    const over = (kind, m, value) => (kind === "grade" ? m > value + 1 : m > value);
+    const unit = { chars: "characters", words: "words", grade: "grade" };
+    updateCounts(panel, "input", input);
+    updateCounts(panel, "output", output);
+    input.addEventListener("input", () => updateCounts(panel, "input", input));
+    wireUpload(panel);
+    $('[data-role="fit-preset"]', panel).addEventListener("change", (e) => {
+      if (!e.target.value) return;
+      const [k, v] = e.target.value.split(":");
+      kindEl.value = k; valueEl.value = v;
+      kindEl.dispatchEvent(new Event("change")); valueEl.dispatchEvent(new Event("change"));
+    });
+    $('[data-action="run"]', panel).addEventListener("click", withLoading(panel, async () => {
+      const text = input.value.trim();
+      if (!text) throw new Error("Enter some text first.");
+      const kind = kindEl.value, value = Number(valueEl.value);
+      if (!Number.isFinite(value) || value < 1) throw new Error("Enter a target number.");
+      if (kind === "grade") {
+        const lang = T.detectLanguage(text);
+        if (!lang.isEnglish && lang.code !== "und") throw new Error("Reading grade is only meaningful for English text. Use characters or words instead.");
+      }
+      info.textContent = "";
+      let d = await postJson("/api/fit", { text, target: kind, value });
+      let m = measure(kind, d.result);
+      let retried = false;
+      if (over(kind, m, value)) {
+        retried = true;
+        setStatus(panel, "loading", `Measured ${m} ${unit[kind]} (target ${value}). Tightening`);
+        const d2 = await postJson("/api/fit", { text, target: kind, value, measured: Math.round(m) });
+        const m2 = measure(kind, d2.result);
+        if (m2 <= m) { d = d2; m = m2; }
+      }
+      output.value = d.result;
+      updateCounts(panel, "output", output);
+      const ok = !over(kind, m, value);
+      info.textContent = `${ok ? "✓" : "Still over:"} ${kind === "grade" ? "grade " + m.toFixed(1) : m + " " + unit[kind]} (target ${value})${retried ? ", after one retry" : ""}.${ok ? "" : " Edit by hand or run it again."}`;
+      window.TSX.after(panel, text, d.result, { guard: "full" });
+      pushHistory({ tool: "fit", label: "Fit to target", input: text, output: d.result });
+    }));
+    $('[data-action="clear"]', panel).addEventListener("click", () => {
+      input.value = ""; output.value = ""; info.textContent = "";
+      updateCounts(panel, "input", input); updateCounts(panel, "output", output); setStatus(panel, "", "");
+    });
+    $('[data-action="copy"]', panel).addEventListener("click", () => output.value && copyText(output.value));
+    $('[data-action="download"]', panel).addEventListener("click", () => output.value && download("fit", output.value));
+  })();
+
   // ---------- keyboard shortcuts & routing ----------
   document.addEventListener("keydown", (e) => {
     const active = $(".panel.active");
@@ -1094,5 +1148,6 @@
     }
   });
   window.addEventListener("hashchange", () => showTab(location.hash.slice(1), { updateHash: false }));
+  window.TSX.persistAll();
   showTab(location.hash.slice(1) || "auto", { updateHash: false });
 })();

@@ -4,7 +4,7 @@
 // input, exactly one AI call (plus the single configured fallback), safe error messages.
 import { parseJsonBody, validateText, ValidationError } from "./validate.js";
 import { checkRateLimit } from "./rateLimit.js";
-import { jsonResponse, errorResponse, optionsResponse } from "./response.js";
+import { jsonResponse, errorResponse, optionsResponse, denyResponse, rateHeaders } from "./response.js";
 import { runAI } from "./providers/index.js";
 import { ProviderError } from "./providers/AIProvider.js";
 
@@ -21,7 +21,7 @@ export function createAiRoute({ route, temperature, maxTokens, build }) {
   async function onRequestPost({ request, env }) {
     const rl = await checkRateLimit(env, request, route);
     if (!rl.allowed) {
-      return errorResponse("Rate limit reached. Please try again tomorrow.", { status: 429, env });
+      return denyResponse(rl, env);
     }
     try {
       const body = await parseJsonBody(request, env);
@@ -31,7 +31,7 @@ export function createAiRoute({ route, temperature, maxTokens, build }) {
       const result = raw.trim();
       return jsonResponse(
         { result, providerUsed, originalLength: text.length, resultLength: result.length },
-        { env }
+        { env, headers: rateHeaders(rl) }
       );
     } catch (err) {
       if (err instanceof ValidationError) return errorResponse(err.message, { status: 400, env });

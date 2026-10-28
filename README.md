@@ -310,6 +310,31 @@ Paste anything, in any language, up to ~30,000 characters.
 
 ---
 
+### Safety, privacy and polish (v2.4)
+
+| Feature | What it does | Notes |
+|---|---|---|
+| **Privacy shield** (top bar, on by default) | Masks emails, phone numbers, Aadhaar-style 12-digit IDs, PAN, IFSC, card numbers (Luhn-checked) and IPv4 addresses with placeholders such as `[[EMAIL_1]]` before text leaves the browser, then restores them in the result. | Pattern-based only. **Names, addresses and free-form secrets are not masked.** If the model drops a placeholder you get a warning. Not applied to anything you paste into a non-AI tool. |
+| **Meaning guard** | After a rewrite, checks that numbers, dates, links, emails and capitalised names survived. Lists what is missing or newly invented. | Heuristic. Translate uses a lighter check (no names); Summarize is skipped because dropping details is its job. |
+| **My voice** | Paste a sample of your own writing; Humanize, Structure, Paraphrase, Grammar (polish) and Tone imitate its style, never its content. | Stored in your browser only (max 1,500 chars) and sent only with those requests while enabled. |
+| **Fit to target** | Rewrites text to a character, word or reading-grade target (presets for X, SMS, SEO title, YouTube, Instagram, LinkedIn). The browser measures the result and retries once if it missed. | Reading grade is English only. |
+| **Read aloud** | Listen/Stop on results, using the browser's own voices. | Needs a voice for the language installed on the device. |
+| **Remembered settings** | Dropdown and checkbox choices persist per tool in `localStorage`. | |
+| **Installable / offline** | `manifest.webmanifest` + `sw.js`. Local tools (Stats, Cleaner, quick scan, diff) open offline; AI tools say you are offline. | Network-first, so a new deploy shows up on the next load. `/api/*` is never cached. |
+| **Requests-left meter** | Top-bar chip from the `X-RateLimit-Remaining` header. | Local tools never count. |
+
+#### Turnstile bot protection (optional, recommended before sharing the link widely)
+
+1. Cloudflare dashboard → **Turnstile** → **Add widget**, hostname `textshift.pages.dev` (plus your custom domain if any), mode **Managed**.
+2. Pages project → Settings → Variables and Secrets (Production):
+   - `TURNSTILE_SITE_KEY` as a plain **variable** (public, served by `GET /api/config`)
+   - `TURNSTILE_SECRET_KEY` as an encrypted **secret**
+3. Redeploy. With no secret set, verification is skipped and the site behaves as before.
+
+Behaviour: every AI request carries an `X-Turnstile-Token`; the server verifies it **before** touching the KV quota, so bots don't burn your daily budget. If Cloudflare's verification endpoint is unreachable the request is refused (fail closed, HTTP 503), because failing open would silently disable the protection. The widget is `interaction-only`, so normal visitors see nothing.
+
+If you manage settings through `wrangler.toml` (`pages_build_output_dir` is set), Cloudflare may treat that file as the source of truth for bindings and variables. Verify in the dashboard after the first deploy that the two Turnstile values and your KV/AI bindings are still present.
+
 ## 8. CI/CD and Dependabot
 
 **`.github/workflows/ci-deploy.yml`**

@@ -1,6 +1,8 @@
+import { voiceBlock } from "../voice.js";
+
 // functions/_lib/prompts/aiToHuman.js
 
-const LANGUAGE_RULE = `Language: the text may be in any language. Write the result in the same language and script as the input (for example Hindi stays in Devanagari, Hinglish stays Hinglish). Never translate it into English.`;
+const LANGUAGE_RULE = `Language: the text may be in any language. Write the result in the same language and script as the input (for example Hindi stays in Devanagari, Hinglish stays Hinglish). Never translate it into English. Tokens such as [[EMAIL_1]] or [[PHONE_2]] are privacy placeholders: copy them exactly as written, never translate, reformat or remove them.`;
 
 const BASE_SYSTEM_PROMPT = `You are a natural-language rewriting assistant.
 
@@ -44,6 +46,7 @@ export function buildAiToHumanPrompt({
   level = "medium",
   preserveLength = false,
   preserveTerminology = true,
+  voice = "",
 } = {}) {
   const notes = [
     STYLE_NOTES[style] || STYLE_NOTES.natural,
@@ -56,7 +59,7 @@ export function buildAiToHumanPrompt({
       : "You may lightly simplify non-essential jargon if it improves readability, but never at the cost of accuracy.",
   ];
 
-  const system = `${BASE_SYSTEM_PROMPT}\n\n${LANGUAGE_RULE}\n\nStyle and options for this request:\n- ${notes.join("\n- ")}`;
+  const system = `${BASE_SYSTEM_PROMPT}\n\n${LANGUAGE_RULE}\n\nStyle and options for this request:\n- ${notes.join("\n- ")}${voiceBlock(voice)}`;
   const buildUser = (text) => `Rewrite the following text:\n\n"""\n${text}\n"""`;
 
   return { system, buildUser };

@@ -7,7 +7,7 @@
 // locally with no AI call.
 import { parseJsonBody, validateText, ValidationError } from "../_lib/validate.js";
 import { checkRateLimit } from "../_lib/rateLimit.js";
-import { jsonResponse, errorResponse, optionsResponse } from "../_lib/response.js";
+import { jsonResponse, errorResponse, optionsResponse, denyResponse, rateHeaders } from "../_lib/response.js";
 import { detectText, DISCLAIMER } from "./detect.js";
 
 export async function onRequestOptions({ env }) {
@@ -50,7 +50,7 @@ function localStats(text) {
 export async function onRequestPost({ request, env }) {
   const rl = await checkRateLimit(env, request, "compare");
   if (!rl.allowed) {
-    return errorResponse("Rate limit reached. Please try again tomorrow.", { status: 429, env });
+    return denyResponse(rl, env);
   }
 
   try {
@@ -100,7 +100,7 @@ export async function onRequestPost({ request, env }) {
           DISCLAIMER +
           " These are estimated linguistic characteristics only, not proof that the text became human-written or AI-written.",
       },
-      { env }
+      { env, headers: rateHeaders(rl) }
     );
   } catch (err) {
     if (err instanceof ValidationError) return errorResponse(err.message, { status: 400, env });

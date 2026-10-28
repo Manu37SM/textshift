@@ -295,6 +295,132 @@
     return chunks.map((c) => c.trim()).filter(Boolean);
   }
 
+
+  // ---------- privacy shield: mask sensitive patterns before text leaves the browser ----------
+  // Pattern-based only. It does NOT find names, addresses or free-form secrets.
+  const luhn = (digits) => {
+    let sum = 0, alt = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let n = digits.charCodeAt(i) - 48;
+      if (alt) { n *= 2; if (n > 9) n -= 9; }
+      sum += n; alt = !alt;
+    }
+    return sum % 10 === 0;
+  };
+  const PII_RULES = [
+    { type: "EMAIL", re: /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g },
+    { type: "CARD", re: /(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])/g, test: (m) => { const d = m.replace(/\D/g, ""); return d.length >= 13 && d.length <= 19 && luhn(d); } },
+    { type: "ID", re: /(?<!\d[ -]?)[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?![ -]?\d)/g },
+    { type: "PAN", re: /\b[A-Z]{5}\d{4}[A-Z]\b/g },
+    { type: "IFSC", re: /\b[A-Z]{4}0[A-Z0-9]{6}\b/g },
+    { type: "PHONE", re: /(?<!\d)(?:\+?91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?!\d)/g },
+    { type: "PHONE", re: /(?<![\d\w])\+\d{1,3}[\s-]?\(?\d{1,4}\)?(?:[\s-]?\d{2,4}){2,4}(?!\d)/g },
+    { type: "PHONE", re: /(?<!\d)\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)/g },
+    { type: "IP", re: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g },
+  ];
+
+  /** @returns {{masked: string, map: Record<string,string>, counts: Record<string,number>, total: number}} */
+  function maskPII(text, state) {
+    const st = state || { map: {}, counts: {}, total: 0 };
+    let out = text;
+    for (const rule of PII_RULES) {
+      out = out.replace(rule.re, (m) => {
+        if (rule.test && !rule.test(m)) return m;
+        const existing = Object.keys(st.map).find((k) => st.map[k] === m);
+        if (existing) return existing;
+        st.counts[rule.type] = (st.counts[rule.type] || 0) + 1;
+        st.total++;
+        const token = `[[${rule.type}_${st.counts[rule.type]}]]`;
+        st.map[token] = m;
+        return token;
+      });
+    }
+    return { masked: out, ...st };
+  }
+  const tokenRe = (token) => new RegExp("\\[{1,2}\\s*" + token.slice(2, -2) + "\\s*\\]{1,2}", "g");
+  function unmaskPII(text, map) {
+    let out = text;
+    for (const token of Object.keys(map)) out = out.replace(tokenRe(token), () => map[token]);
+    return out;
+  }
+  /** Tokens (by type) the model dropped from its output. Call on the still-masked output. */
+  function droppedTokens(maskedOutput, map) {
+    return Object.keys(map).filter((t) => !new RegExp(tokenRe(t).source).test(maskedOutput)).map((t) => t.slice(2, -2));
+  }
+
+  // ---------- meaning guard: did the rewrite keep the hard facts? ----------
+  const DIGIT_ZEROS = [0x30, 0x660, 0x6f0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66];
+  const asciiDigits = (t) =>
+    t.replace(/\p{Nd}/gu, (d) => {
+      const cp = d.codePointAt(0);
+      const z = DIGIT_ZEROS.find((zero) => cp >= zero && cp <= zero + 9);
+      return z === undefined ? d : String(cp - z);
+    });
+  const uniqBy = (arr, key) => [...new Map(arr.map((x) => [key(x), x])).values()];
+
+  function extractFacts(text, { names }) {
+    const t = asciiDigits(text);
+    const facts = [];
+    for (const m of t.matchAll(/(?<![\w.])\d[\d,]*(?:\.\d+)?%?/g)) {
+      const v = m[0].replace(/,/g, "").replace(/\.$/, "");
+      facts.push({ type: "number", value: v, strong: v.length >= 3 || /[.%]/.test(v) });
+    }
+    for (const m of t.matchAll(/https?:\/\/[^\s<>"')]+/g)) facts.push({ type: "link", value: m[0].replace(/[.,;:!?]+$/, "").toLowerCase(), strong: true });
+    for (const m of t.matchAll(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g)) facts.push({ type: "email", value: m[0].toLowerCase(), strong: true });
+    if (names) {
+      for (const m of text.matchAll(/\b\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+)*\b/gu)) {
+        const before = text.slice(0, m.index);
+        const sentenceStart = m.index === 0 || /(?:[.!?…]\s+|\n\s*)$/.test(before);
+        if (sentenceStart && !/\s/.test(m[0])) continue; // lone capitalised sentence opener, probably not a name
+        facts.push({ type: "name", value: m[0], strong: true });
+      }
+    }
+    return uniqBy(facts, (f) => f.type + "|" + f.value.toLowerCase());
+  }
+
+  /** Compare hard facts in `original` against `result`. */
+  function meaningGuard(original, result, { names = true } = {}) {
+    const before = extractFacts(original, { names });
+    const after = extractFacts(result, { names: false });
+    const hay = asciiDigits(result).replace(/(?<=\d),(?=\d)/g, "").toLowerCase();
+    const afterKeys = new Set(after.map((f) => f.type + "|" + f.value.toLowerCase()));
+    const missing = before.filter((f) => {
+      const key = f.type + "|" + f.value.toLowerCase();
+      if (afterKeys.has(key)) return false;
+      if (f.type === "name") {
+        const low = f.value.toLowerCase();
+        return !(hay.includes(low) || low.split(/\s+/).every((w) => hay.includes(w)));
+      }
+      return !hay.includes(f.value.toLowerCase());
+    });
+    const beforeKeys = new Set(before.map((f) => f.type + "|" + f.value.toLowerCase()));
+    const origHay = asciiDigits(original).replace(/(?<=\d),(?=\d)/g, "").toLowerCase();
+    const added = after.filter((f) => f.strong && f.type !== "name" && !beforeKeys.has(f.type + "|" + f.value.toLowerCase()) && !origHay.includes(f.value.toLowerCase()));
+    return { missing, added, checked: before.length };
+  }
+
+  // ---------- voice profile stats ----------
+  function voiceStats(sample) {
+    const ws = words(sample);
+    const ss = sentences(sample);
+    const lines = [];
+    if (ws.length < 20) return { words: ws.length, lines: ["Add a bit more (at least 40 words) so the style can be picked up."] };
+    const avg = ws.length / Math.max(1, ss.length);
+    lines.push(avg < 11 ? `Short, punchy sentences (avg ${round(avg, 0)} words)` : avg > 20 ? `Long, flowing sentences (avg ${round(avg, 0)} words)` : `Medium-length sentences (avg ${round(avg, 0)} words)`);
+    const lang = detectLanguage(sample);
+    if (lang.code === "en") {
+      const contr = (sample.match(/\b\w+['’](?:t|s|re|ve|ll|d|m)\b/gi) || []).length;
+      lines.push(contr / ws.length > 0.02 ? "Uses contractions freely" : "Rarely uses contractions");
+      const first = ws.filter((w) => /^i$/i.test(w)).length;
+      if (first / ws.length > 0.02) lines.push("Writes in the first person a lot");
+    }
+    const q = (sample.match(/\?/g) || []).length, ex = (sample.match(/!/g) || []).length;
+    if (q) lines.push("Asks direct questions");
+    if (ex / Math.max(1, ss.length) > 0.15) lines.push("Likes exclamation marks");
+    if ((sample.match(/—/g) || []).length) lines.push("Uses em dashes");
+    return { words: ws.length, lines };
+  }
+
   // ---------- word diff ----------
   function diffWords(a, b) {
     const A = a.match(/\S+|\s+/g) || [];
@@ -402,6 +528,7 @@
     },
     numberLines: (t) => t.split("\n").map((l, i) => `${i + 1}. ${l}`).join("\n"),
     // extract
+    maskPII: (t) => maskPII(t).masked,
     emails: (t) => uniq(t.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).join("\n"),
     urls: (t) => uniq((t.match(/https?:\/\/[^\s<>"')]+/g) || []).map((u) => u.replace(/[.,;:!?]+$/, ""))).join("\n"),
     numbers: (t) => (t.match(/-?\d[\d,]*(?:\.\d+)?/g) || []).join("\n"),
@@ -420,5 +547,5 @@
     return { text: out, count };
   }
 
-  root.TextLib = { chunkText, detectLanguage, LANG_NAMES, toneSignals, words, sentences, paragraphs, syllables, stats, frequency, limits, aiSignals, diffWords, diffSummary, OPS, findReplace, STOP };
+  root.TextLib = { maskPII, unmaskPII, droppedTokens, meaningGuard, voiceStats, chunkText, detectLanguage, LANG_NAMES, toneSignals, words, sentences, paragraphs, syllables, stats, frequency, limits, aiSignals, diffWords, diffSummary, OPS, findReplace, STOP };
 })(typeof globalThis !== "undefined" ? globalThis : window);

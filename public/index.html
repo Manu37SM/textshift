@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>TextShift — rewrite, summarize, translate, analyze</title>
 <meta name="description" content="A writing toolkit: humanize or structure text, paraphrase, summarize, fix grammar, translate, estimate AI-likeness, compare versions, check readability and clean up text." />
+<meta name="theme-color" content="#2f6f6b" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icon-192.png" type="image/png" />
+<link rel="apple-touch-icon" href="icon-180.png" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -16,6 +20,9 @@
     <span class="brand-sub">writing toolkit</span>
   </div>
   <div class="topbar-actions">
+    <span id="quota-chip" class="quota-chip" hidden></span>
+    <label class="shield" title="Masks emails, phone numbers, ID/PAN/Aadhaar/IFSC numbers, card numbers and IPs before text is sent, then restores them. Pattern-based: names and addresses are NOT masked."><input type="checkbox" id="shield-toggle" checked /> <span>Privacy shield</span></label>
+    <button id="voice-btn" class="btn ghost small" type="button" title="Teach the rewriters your writing style">My voice</button>
     <button id="history-btn" class="btn ghost small" type="button">History</button>
     <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
       <svg id="theme-icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 4.5V2M12 22v-2.5M4.5 12H2M22 12h-2.5M5.6 5.6 4 4M20 20l-1.6-1.6M18.4 5.6 20 4M4 20l1.6-1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.6"/></svg>
@@ -33,6 +40,7 @@
   <button class="tab" role="tab" aria-selected="false" data-tab="paraphrase">Paraphrase</button>
   <button class="tab" role="tab" aria-selected="false" data-tab="grammar">Grammar</button>
   <button class="tab" role="tab" aria-selected="false" data-tab="pipeline">Pipeline</button>
+  <button class="tab" role="tab" aria-selected="false" data-tab="fit">Fit to target</button>
   <span class="tab-sep" aria-hidden="true"></span>
   <span class="tab-group">Transform</span>
   <button class="tab" role="tab" aria-selected="false" data-tab="summarize">Summarize</button>
@@ -143,6 +151,49 @@
     </div>
     <ol class="steps" data-role="steps" hidden></ol>
     <div class="compare-result" data-role="pipeline-result"></div>
+    <div class="status-row" data-role="status" aria-live="polite"></div>
+  </section>
+
+  <!-- ============ FIT TO TARGET ============ -->
+  <section class="panel" id="panel-fit" role="tabpanel">
+    <div class="options-bar">
+      <label>Preset
+        <select data-role="fit-preset" aria-label="Preset">
+          <option value="">Custom</option>
+          <option value="chars:280">X / Twitter post (280)</option>
+          <option value="chars:160">SMS / meta description (160)</option>
+          <option value="chars:60">SEO title (60)</option>
+          <option value="chars:100">YouTube title (100)</option>
+          <option value="chars:2200">Instagram caption (2200)</option>
+          <option value="chars:3000">LinkedIn post (3000)</option>
+          <option value="grade:8">Plain language (grade 8)</option>
+        </select>
+      </label>
+      <label>Target
+        <select data-opt="target"><option value="chars">Max characters</option><option value="words">Max words</option><option value="grade">Reading grade (English)</option></select>
+      </label>
+      <label>Value <input type="number" data-opt="value" value="280" min="2" max="6000" step="1" style="width:6.5em" /></label>
+    </div>
+    <div class="editor-grid">
+      <div class="editor-col">
+        <div class="editor-head"><span>Text to fit</span><span class="counts" data-count-for="input">0 words · 0 chars</span></div>
+        <textarea class="editor" data-role="input" placeholder="Paste text. It is rewritten to hit the target, checked here, and retried once if it misses." maxlength="6000"></textarea>
+        <div class="editor-actions">
+          <button class="btn primary" data-action="run">Fit it</button>
+          <button class="btn ghost" data-action="clear">Clear</button>
+          <label class="file-btn btn ghost">Open file<input type="file" accept=".txt,.md,.text,text/plain" data-action="upload" hidden /></label>
+        </div>
+      </div>
+      <div class="editor-col">
+        <div class="editor-head"><span>Fitted text</span><span class="counts" data-count-for="output">0 words · 0 chars</span></div>
+        <textarea class="editor" data-role="output" placeholder="The fitted text appears here…" readonly></textarea>
+        <div class="editor-actions">
+          <button class="btn ghost" data-action="copy">Copy</button>
+          <button class="btn ghost" data-action="download">Download</button>
+        </div>
+        <div class="fit-result muted small" data-role="fit-result" aria-live="polite"></div>
+      </div>
+    </div>
     <div class="status-row" data-role="status" aria-live="polite"></div>
   </section>
 
@@ -310,6 +361,23 @@
   <ul id="history-list" class="history-list"></ul>
 </dialog>
 
+<dialog id="voice-dialog" aria-labelledby="voice-title">
+  <div class="dialog-head">
+    <h2 id="voice-title">My voice</h2>
+    <button class="btn ghost small" id="voice-close" type="button">Close</button>
+  </div>
+  <p class="dialog-note">Paste 100–300 words you wrote yourself. Humanize, Structure, Paraphrase, Grammar (polish) and Tone will imitate its style (sentence length, contractions, rhythm), never its content. Saved only in this browser; sent with each of those requests while enabled.</p>
+  <textarea id="voice-text" class="editor" rows="8" maxlength="1500" placeholder="Paste something you wrote, like an email or a post…"></textarea>
+  <div class="muted small"><span id="voice-count">0/1500</span> · Detected style:</div>
+  <ul id="voice-stats" class="observations"></ul>
+  <label class="checkbox"><input type="checkbox" id="voice-on" /> Use my voice in rewrites</label>
+  <div class="dialog-actions">
+    <button class="btn primary" id="voice-save" type="button">Save</button>
+    <button class="btn ghost" id="voice-clear" type="button">Clear</button>
+  </div>
+</dialog>
+
+<div id="ts-container" class="ts-container"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <footer class="site-footer">
@@ -318,6 +386,7 @@
 </footer>
 
 <script src="textlib.js"></script>
+<script src="features.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

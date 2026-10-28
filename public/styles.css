@@ -450,3 +450,18 @@ details.translation summary { cursor: pointer; color: var(--accent); }
 .auto-output { margin-top: 18px; }
 .auto-output[hidden] { display: none; }
 .recheck:not(:empty) { margin-top: 14px; }
+
+/* ---- privacy shield, quota, voice, guard, listen, fit ---- */
+.shield { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.quota-chip { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border, #d8d8d8); color: var(--muted, #666); white-space: nowrap; }
+.quota-chip.low { border-color: #c0392b; color: #c0392b; }
+#voice-btn.active::after { content: " ●"; color: var(--accent); }
+#voice-dialog { max-width: 560px; width: calc(100% - 32px); }
+#voice-dialog textarea { width: 100%; box-sizing: border-box; }
+.dialog-actions { display: flex; gap: 8px; margin-top: 12px; }
+.guard { font-size: 13px; margin-top: 8px; padding: 8px 12px; border-radius: var(--radius); }
+.guard.ok { background: rgba(47, 111, 94, 0.12); }
+.guard.warn { background: var(--mark-bg); }
+.guard code { font-size: 12.5px; }
+.ts-container { position: fixed; right: 12px; bottom: 12px; z-index: 50; }
+.fit-result { margin-top: 8px; }

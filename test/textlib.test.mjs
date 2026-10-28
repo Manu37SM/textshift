@@ -133,3 +133,68 @@ test("sentences handle danda and CJK full stop", () => {
   assert.equal(T.sentences("यह पहला है। यह दूसरा है।").length, 2);
   assert.equal(T.sentences("这是第一句。这是第二句。").length, 2);
 });
+
+// ---------- privacy shield ----------
+test("maskPII masks the usual suspects and round-trips", () => {
+  const text = "Mail ravi.k@example.com or call +91 98765 43210. PAN ABCDE1234F, IFSC HDFC0001234, Aadhaar 2345 6789 0123, card 4111 1111 1111 1111, host 192.168.1.10.";
+  const r = T.maskPII(text);
+  for (const secret of ["ravi.k@example.com", "98765 43210", "ABCDE1234F", "HDFC0001234", "2345 6789 0123", "4111 1111 1111 1111", "192.168.1.10"]) {
+    assert.ok(!r.masked.includes(secret), "leaked: " + secret);
+  }
+  assert.equal(r.total, 7);
+  assert.match(r.masked, /\[\[EMAIL_1\]\]/);
+  assert.equal(T.unmaskPII(r.masked, r.map), text);
+});
+test("maskPII leaves ordinary numbers and non-Luhn digit runs alone", () => {
+  const text = "In 2024 we sold 1,200 units for ₹3,45,000 on 12-03-2024, order 1234 5678 9012 3456, 12 items.";
+  const r = T.maskPII(text);
+  assert.ok(!r.masked.includes("[[EMAIL"));
+  assert.ok(r.masked.includes("1,200") && r.masked.includes("2024") && r.masked.includes("12 items"));
+  assert.ok(r.masked.includes("1234 5678 9012 3456")); // fails Luhn → not a card
+});
+test("maskPII reuses the same token for the same value across calls", () => {
+  const st = { map: {}, counts: {}, total: 0 };
+  const a = T.maskPII("a@b.com", st).masked;
+  const b = T.maskPII("again a@b.com and c@d.org", st).masked;
+  assert.equal(a, "[[EMAIL_1]]");
+  assert.equal(b, "again [[EMAIL_1]] and [[EMAIL_2]]");
+});
+test("unmask tolerates mangled brackets; droppedTokens finds missing ones", () => {
+  const map = { "[[EMAIL_1]]": "a@b.com", "[[PHONE_1]]": "9876543210" };
+  assert.equal(T.unmaskPII("write [EMAIL_1] now", map), "write a@b.com now");
+  assert.equal(T.unmaskPII("write [[ EMAIL_1 ]] now", map), "write a@b.com now");
+  assert.deepEqual(T.droppedTokens("only [[EMAIL_1]] here", map), ["PHONE_1"]);
+  assert.deepEqual(T.droppedTokens("only [EMAIL_1] and [[PHONE_1]]", map), []);
+});
+test("Cleaner op maskPII", () => assert.equal(T.OPS.maskPII("x a@b.com y"), "x [[EMAIL_1]] y"));
+
+// ---------- meaning guard ----------
+test("meaningGuard: preserved facts → nothing missing", () => {
+  const o = "Rahul Sharma paid ₹1,200 on 5 March 2024 via https://pay.example.com/x. Mail a@b.com.";
+  const r = "On 5 March 2024, Rahul Sharma paid ₹1200 through https://pay.example.com/x, and you can mail a@b.com.";
+  assert.deepEqual(T.meaningGuard(o, r).missing, []);
+});
+test("meaningGuard: flags dropped number, link and name; flags invented numbers", () => {
+  const o = "Meera from Pune sold 450 units at 12% margin. See https://x.io/a.";
+  const r = "She sold 540 units with a decent margin.";
+  const g = T.meaningGuard(o, r);
+  const miss = g.missing.map((m) => m.value);
+  assert.ok(miss.includes("450") && miss.includes("12%") && miss.includes("https://x.io/a") && miss.includes("Pune"), miss.join());
+  assert.ok(g.added.some((a) => a.value === "540"));
+});
+test("meaningGuard: sentence-initial words are not treated as names; names:false skips names", () => {
+  const g = T.meaningGuard("However, it works. Overall fine.", "It works, fine.");
+  assert.deepEqual(g.missing, []);
+  assert.deepEqual(T.meaningGuard("Ask Priya.", "Ask her.", { names: false }).missing, []);
+});
+test("meaningGuard: Devanagari digits match ASCII digits (translation)", () => {
+  assert.deepEqual(T.meaningGuard("Total 1500 units", "कुल १५०० इकाइयाँ", { names: false }).missing, []);
+});
+
+// ---------- voice stats ----------
+test("voiceStats describes style and asks for more text when short", () => {
+  assert.match(T.voiceStats("Too short.").lines[0], /at least 40 words/);
+  const v = T.voiceStats("I don't like long words. I can't stand them. Why use more when less works? It's simple. I'll keep it short, honestly. That's the whole point of writing well, isn't it? Short wins.");
+  assert.ok(v.lines.some((l) => /Short, punchy/.test(l)));
+  assert.ok(v.lines.some((l) => /contractions freely/.test(l)));
+});

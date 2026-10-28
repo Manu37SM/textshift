@@ -1,7 +1,7 @@
 // functions/api/tone.js — POST /api/tone  (tone check + suggested rewrite, one AI call)
 import { parseJsonBody, validateText, ValidationError } from "../_lib/validate.js";
 import { checkRateLimit } from "../_lib/rateLimit.js";
-import { jsonResponse, errorResponse, optionsResponse } from "../_lib/response.js";
+import { jsonResponse, errorResponse, optionsResponse, denyResponse, rateHeaders } from "../_lib/response.js";
 import { runAI } from "../_lib/providers/index.js";
 import { ProviderError } from "../_lib/providers/AIProvider.js";
 import { buildTonePrompt, parseToneJson } from "../_lib/prompts/tone.js";
@@ -13,7 +13,7 @@ export async function onRequestOptions({ env }) {
 export async function onRequestPost({ request, env }) {
   const rl = await checkRateLimit(env, request, "tone");
   if (!rl.allowed) {
-    return errorResponse("Rate limit reached. Please try again tomorrow.", { status: 429, env });
+    return denyResponse(rl, env);
   }
   try {
     const body = await parseJsonBody(request, env);
@@ -30,7 +30,7 @@ export async function onRequestPost({ request, env }) {
     if (!parsed) {
       return errorResponse("The AI returned an unreadable analysis. Please try again.", { status: 502, env });
     }
-    return jsonResponse({ ...parsed, providerUsed }, { env });
+    return jsonResponse({ ...parsed, providerUsed }, { env, headers: rateHeaders(rl) });
   } catch (err) {
     if (err instanceof ValidationError) return errorResponse(err.message, { status: 400, env });
     if (err instanceof ProviderError) {

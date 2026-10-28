@@ -6,6 +6,8 @@
 // the namespace) so local development still works, but fails CLOSED (blocks the request)
 // if KV is bound but read/write itself errors, since that's the safer default in production.
 
+import { verifyTurnstile } from "./turnstile.js";
+
 function todayKey(ip, route) {
   const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, UTC
   return `rl:${route}:${ip}:${day}`;
@@ -21,12 +23,17 @@ export function getClientIp(request) {
 
 export async function checkRateLimit(env, request, route) {
   const limit = Number(env.MAX_REQUESTS_PER_IP_PER_DAY) || 30;
+  // Bot check first, so rejected (unverified) requests never cost a KV write.
+  const human = await verifyTurnstile(env, request);
+  if (!human.ok) {
+    return { allowed: false, remaining: 0, limit, reason: human.unavailable ? "verify-unavailable" : "verify" };
+  }
   const kv = env.RATE_LIMIT_KV;
 
   if (!kv) {
     // No KV bound (local dev without `wrangler pages dev --kv RATE_LIMIT_KV`).
     // Allow the request through rather than blocking local testing.
-    return { allowed: true, remaining: limit, limited: false };
+    return { allowed: true, remaining: limit, limit, limited: false };
   }
 
   const ip = getClientIp(request);
@@ -35,14 +42,14 @@ export async function checkRateLimit(env, request, route) {
   try {
     const current = Number((await kv.get(key)) || "0");
     if (current >= limit) {
-      return { allowed: false, remaining: 0, limited: true };
+      return { allowed: false, remaining: 0, limit, limited: true, reason: "limit" };
     }
     // Best-effort increment; a small race under concurrent requests just means
     // the limit is approximate, which is fine for a cost-protection guard.
     await kv.put(key, String(current + 1), { expirationTtl: 60 * 60 * 26 });
-    return { allowed: true, remaining: limit - current - 1, limited: true };
+    return { allowed: true, remaining: limit - current - 1, limit, limited: true };
   } catch {
     // KV is bound but errored — fail closed rather than risk unbounded AI spend.
-    return { allowed: false, remaining: 0, limited: true, errored: true };
+    return { allowed: false, remaining: 0, limit, limited: true, errored: true, reason: "limit" };
   }
 }
