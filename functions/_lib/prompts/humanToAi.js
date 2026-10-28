@@ -1,5 +1,7 @@
 // functions/_lib/prompts/humanToAi.js
 
+const LANGUAGE_RULE = `Language: the text may be in any language. Write the result in the same language and script as the input (for example Hindi stays in Devanagari, Hinglish stays Hinglish). Never translate it into English.`;
+
 const BASE_SYSTEM_PROMPT = `You are a structured writing assistant.
 
 Transform the supplied text into clear, organized, precise writing while preserving the original meaning, facts, intent, and important details.
@@ -42,7 +44,7 @@ export function buildHumanToAiPrompt({
       : "Prioritize clarity and structure over matching the original length exactly.",
   ];
 
-  const system = `${BASE_SYSTEM_PROMPT}\n\nStyle and options for this request:\n- ${notes.join("\n- ")}`;
+  const system = `${BASE_SYSTEM_PROMPT}\n\n${LANGUAGE_RULE}\n\nStyle and options for this request:\n- ${notes.join("\n- ")}`;
   const buildUser = (text) => `Transform the following text:\n\n"""\n${text}\n"""`;
 
   return { system, buildUser };

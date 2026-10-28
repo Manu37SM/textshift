@@ -250,3 +250,92 @@ No paid analytics service is required or used.
   UI), not a limitation to "fix" later.
 - **Workers AI fallback quality** may differ from Groq's — it's there for availability,
   not as a drop-in equal.
+
+## 7. Tools (v2)
+
+| Tool | Where it runs | AI requests |
+|---|---|---|
+| AI → Human, Human → AI | `/api/humanize`, `/api/aiify` | 1 |
+| Paraphrase (8 modes), Grammar (proofread/polish, US/UK/Indian English), Summarize (bullets/TL;DR/paragraph/actions/simple), Translate (21 languages incl. Hindi, Marathi, Tamil) | `/api/paraphrase`, `/api/grammar`, `/api/summarize`, `/api/translate` | 1 each |
+| Detector | `/api/detect` + local quick scan | 1 (AI) or 0 (quick scan) |
+| Compare | local word diff + stats; optional `/api/compare` | 0 (free) or 2 (AI estimate) |
+| Stats (counts, reading time, Flesch, keywords, platform limits) | browser only (`public/textlib.js`) | 0 |
+| Cleaner (case, whitespace, sort/dedupe, extract, find & replace) | browser only | 0 |
+
+Also: word-level "Show changes" diff on every rewrite, "Send to…" between tools, file open (.txt/.md),
+local history (browser `localStorage` only, last 25), Ctrl/⌘+Enter to run, Alt+←/→ to switch tools, `#tab` deep links.
+
+New AI endpoints are built with `functions/_lib/aiRoute.js`, so they get the same rate limit, validation and
+single-call cost guard as the originals. Prompts live in `functions/_lib/prompts/tools.js`.
+
+Run the local-library tests with `npm test`.
+
+### Pipeline and Tone (v2.1)
+
+- **Pipeline** — one click: rewrite (`/api/humanize`) → score before/after (`/api/compare`) → word-level diff. Reports
+  honestly when the AI-likeness estimate did not improve and offers "Run again, stronger".
+- **Tone** — `/api/tone` (1 AI call, JSON) returns a tone read, how it may land, risky phrases and a suggested rewrite
+  (warmer / more direct / more formal / more diplomatic, for a colleague / manager / client / friend). A free local
+  quick scan flags hedging, demanding and passive-aggressive phrasing.
+
+### Other languages (v2.2)
+
+The language is detected locally (script ranges + stopword scoring; Hindi/Marathi, Urdu/Arabic and Hinglish are told apart
+heuristically, so very short or mixed text may be marked "unsure"). Detector, AI → Human and Pipeline show a language
+badge, an **Input language** override, and a **Handling** choice:
+
+| Handling | Detector | AI → Human / Pipeline | Extra AI requests |
+|---|---|---|---|
+| Keep original language (default) | analyzed in-language | rewritten in-language | 0 |
+| Translate to English | translated first, then scored (banner + the translation is shown) | translate → rewrite in English → translate back to the source language | 1 (detector) / 2 (rewrite) |
+
+Notes: translation smooths style cues, so detector scores on translated text are less reliable; the detector prompt is
+also told not to treat plain or literal phrasing from non-native writers as evidence of AI. Back-translation is not
+offered for Hinglish. English-only local checks (stock phrases, transitions, Flesch, tone phrases) are skipped for other
+languages instead of giving misleading numbers. Humanize / Human → AI / Paraphrase prompts keep the input language.
+
+### Auto (v2.3) — the default tab
+
+Paste anything, in any language, up to ~30,000 characters.
+
+- **Analyze** (1 AI request): detected language, reading stats, AI-likeness estimate, and a suggested next step
+  (AI-like → Humanize is highlighted; human-like → Fix grammar; mixed → no push, read it yourself).
+- **Then:** run Humanize, Structure, Paraphrase, Fix grammar, Summarize or Translate inline, with a diff, copy/download,
+  **Use as input** (chain actions), **Check result** (before → after AI-likeness) and **Tune in full tool** (opens the
+  matching tab with the text carried over).
+- **Long text:** split on paragraph, then sentence boundaries into chunks of up to ~5,800 characters (`TextLib.chunkText`) and
+  processed one request per chunk, in order. Summaries of several chunks get one extra merge request. Limit: 5 chunks;
+  the page tells you the request count before you run. Analyze scores only the first chunk, and says so.
+- The per-IP daily limit (default 30 per endpoint) applies per request, so a 5-chunk document uses 5 of them.
+
+---
+
+## 8. CI/CD and Dependabot
+
+**`.github/workflows/ci-deploy.yml`**
+
+| Trigger | What runs |
+|---|---|
+| Pull request (including Dependabot) | `npm ci` → `npm test` → syntax check → bundle all Pages Functions. **No deploy, no secrets.** |
+| Push to `master` | The same checks, then **deploy to Cloudflare Pages**, then a smoke test (site returns 200, `/api/tone` answers OPTIONS 204). |
+| Manual (`workflow_dispatch`) | Same as push to `master` (run it from the Actions tab). |
+
+One-time setup (the deploy job skips with a warning until these exist, so the first push will not go red):
+
+1. Cloudflare dashboard → My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers**, or a custom
+   token with `Account → Cloudflare Pages → Edit`.
+2. GitHub repo → Settings → Secrets and variables → Actions → add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+3. Optional manual gate: Settings → Environments → `production` → add required reviewers. Every deploy then waits for approval.
+4. Confirm the Pages project's **production branch** is `master` (Pages → textshift → Settings → Builds). The workflow
+   deploys with `--branch=master`; if the project expects another branch, deploys land as previews.
+
+Your `GROQ_API_KEY` and other secrets stay in Cloudflare; the workflow never touches them. After the first CI deploy,
+check that the AI binding, KV binding and environment variables still behave as before. When a `wrangler.toml` with
+`pages_build_output_dir` exists, Cloudflare treats the file as the source of truth for bindings and plain variables,
+so confirm that in the dashboard (behaviour can change between Wrangler/Pages versions).
+
+**`.github/dependabot.yml`** is deliberately conservative: weekly (Mon 06:00 IST), minor+patch updates grouped into one PR
+per ecosystem (npm, GitHub Actions), major bumps ignored (do those yourself), max 2 + 1 open PRs, **no auto-merge**.
+`wrangler` is a devDependency, so it never ships to Cloudflare and updates can break CI, not the live site.
+
+Recommended: GitHub → Settings → Branches → protect `master` and require the **Test** check to pass before merging.

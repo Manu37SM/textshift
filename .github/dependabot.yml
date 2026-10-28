@@ -1,0 +1,46 @@
+# Dependabot — deliberately conservative.
+#
+# Goals: (1) never surprise the live site, (2) keep PR noise low, (3) a human merges every PR.
+#  - Minor + patch updates are grouped into ONE PR per ecosystem per week.
+#  - Major version bumps are ignored: upgrade those yourself, deliberately (e.g. `npm i wrangler@latest`).
+#  - No auto-merge anywhere. Every PR runs the CI workflow (tests + Functions bundle); deploys happen
+#    only from `master` after merge, never from a PR.
+#  - Note: `wrangler` is a devDependency. It is not shipped to Cloudflare, so the deployed app has
+#    zero runtime npm dependencies. Updates here can break the build/CI, not the running site.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 2
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 1
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
